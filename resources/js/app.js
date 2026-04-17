@@ -5,7 +5,6 @@
 // ── 1. Config (écrasée dès que getConfig() répond) ─────────────────────────────
 var FRONTEND_URL = 'https://alfychat.app';
 var APP_VERSION  = '1.0.0';
-var UPDATE_URL   = 'https://update.alfychat.com/desktop/manifest.json';
 
 // ── 2. DOM refs ────────────────────────────────────────────────────────────────
 var splash       = document.getElementById('splash');
@@ -51,46 +50,26 @@ window.retryLoad = function () {
   startBoot();
 };
 
-// ── 5. Auto-update (vérification silencieuse) ──────────────────────────────────
-function checkUpdate(onDone) {
-  try {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', UPDATE_URL + '?_t=' + Date.now(), true);
-    xhr.timeout = 5000;
-    xhr.onload = function () {
-      try {
-        var m = JSON.parse(xhr.responseText);
-        if (!m || !m.version) { onDone(); return; }
-        var cur = APP_VERSION.replace(/^v/, '').split('.').map(Number);
-        var nxt = m.version.replace(/^v/, '').split('.').map(Number);
-        var isNewer = false;
-        for (var i = 0; i < 3; i++) {
-          var d = (nxt[i] || 0) - (cur[i] || 0);
-          if (d > 0) { isNewer = true; break; }
-          if (d < 0) break;
-        }
-        if (isNewer) {
-          var plat = navigator.platform.toLowerCase().includes('win') ? 'win32' :
-                     navigator.platform.toLowerCase().includes('mac') ? 'darwin' : 'linux';
-          var pd = m.platforms && m.platforms[plat];
-          if (pd && pd.url) {
-            updateText.textContent = 'Mise à jour ' + m.version + ' disponible';
-            updateBanner.classList.add('show');
-            btnInstall.onclick = function () {
-              updateBanner.classList.remove('show');
-              window.electronAPI.openExternal(pd.url);
-            };
-            btnDismiss.onclick = function () { updateBanner.classList.remove('show'); };
-          }
-        }
-      } catch (_) {}
-      onDone();
-    };
-    xhr.onerror   = function () { onDone(); };
-    xhr.ontimeout = function () { onDone(); };
-    xhr.send();
-  } catch (_) { onDone(); }
-}
+// ── 5. Auto-update (via electron-updater → IPC) ───────────────────────────────
+window.electronAPI.onUpdateAvailable(function (info) {
+  updateText.textContent = 'Mise à jour ' + info.version + ' disponible — Téléchargement…';
+  updateBanner.classList.add('show');
+  btnInstall.style.display = 'none';
+  btnDismiss.onclick = function () { updateBanner.classList.remove('show'); };
+});
+
+window.electronAPI.onUpdateDownloaded(function (info) {
+  updateText.textContent = 'Mise à jour ' + info.version + ' prête';
+  updateBanner.classList.add('show');
+  btnInstall.style.display = '';
+  btnInstall.textContent = 'Redémarrer et installer';
+  btnInstall.onclick = function () { window.electronAPI.installUpdate(); };
+  btnDismiss.onclick = function () { updateBanner.classList.remove('show'); };
+});
+
+window.electronAPI.onUpdateError(function (_info) {
+  // Ignorer silencieusement — l'app reste fonctionnelle
+});
 
 // ── 6. Navigation guard ────────────────────────────────────────────────────────
 var ALLOWED_NAV = /^\/(login|register|forgot-password|reset-password|verify-email|channels|invite|app|subscription)(\/.*)?(\?.*)?$/;
@@ -164,29 +143,24 @@ frame.addEventListener('ipc-message', function (e) {
 // ── 9. Boot ────────────────────────────────────────────────────────────────────
 function startBoot() {
   setProgress(5, 'Initialisation…');
-  setProgress(20, 'Vérification des mises à jour…');
 
-  checkUpdate(function () {
-    setProgress(70, 'Chargement de l\'interface…');
+  failTimer = setTimeout(function () {
+    if (!webviewWrap.classList.contains('visible')) {
+      showError(
+        'Impossible de contacter le frontend (' + FRONTEND_URL + ').\n' +
+        'Assurez-vous que l\'application AlfyChat est accessible.'
+      );
+    }
+  }, 20000);
 
-    failTimer = setTimeout(function () {
-      if (!webviewWrap.classList.contains('visible')) {
-        showError(
-          'Impossible de contacter le frontend (' + FRONTEND_URL + ').\n' +
-          'Assurez-vous que l\'application AlfyChat est accessible.'
-        );
-      }
-    }, 20000);
-
-    frame.setAttribute('src', FRONTEND_URL + '/channels');
-  });
+  setProgress(60, 'Chargement de l\'interface…');
+  frame.setAttribute('src', FRONTEND_URL + '/channels');
 }
 
 // ── 10. Init ───────────────────────────────────────────────────────────────────
 window.electronAPI.getConfig().then(function (cfg) {
   FRONTEND_URL = (cfg.FRONTEND_URL || FRONTEND_URL).replace(/\/$/, '');
   APP_VERSION  = cfg.APP_VERSION  || APP_VERSION;
-  UPDATE_URL   = cfg.UPDATE_URL   || UPDATE_URL;
   startBoot();
 });
 

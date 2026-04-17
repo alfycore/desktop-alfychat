@@ -1,13 +1,13 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, shell, Notification, session } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs   = require('fs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const FRONTEND_URL = 'https://alfychat.app/';
-const APP_VERSION  = '1.0.0';
-const UPDATE_URL   = 'https://update.alfychat.com/desktop/manifest.json';
+const APP_VERSION  = require('./package.json').version;
 
 let prefsPath;
 let mainWindow;
@@ -82,7 +82,11 @@ ipcMain.handle('win-maximize',     () => {
 ipcMain.handle('win-close',        () => { mainWindow?.close(); });
 ipcMain.handle('win-is-maximized', () => mainWindow?.isMaximized() ?? false);
 
-ipcMain.handle('get-config', () => ({ FRONTEND_URL, APP_VERSION, UPDATE_URL }));
+ipcMain.handle('get-config', () => ({ FRONTEND_URL, APP_VERSION }));
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall(false, true);
+});
 
 ipcMain.handle('open-external', (_, url) => {
   if (/^https?:\/\//.test(url)) return shell.openExternal(url);
@@ -125,6 +129,36 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // ── Auto-update via GitHub Releases ─────────────────────────────────────────
+  if (app.isPackaged) {
+    autoUpdater.autoDownload    = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+      mainWindow?.webContents.send('update-available', {
+        version: info.version,
+        releaseNotes: info.releaseNotes || '',
+      });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      mainWindow?.webContents.send('update-downloaded', {
+        version: info.version,
+      });
+    });
+
+    autoUpdater.on('error', (err) => {
+      // Ignorer silencieusement les erreurs réseau
+      const msg = err && err.message ? err.message : String(err);
+      if (!msg.includes('net::') && !msg.includes('ENOTFOUND')) {
+        mainWindow?.webContents.send('update-error', { message: msg });
+      }
+    });
+
+    // Vérifier après 5 secondes pour ne pas bloquer le démarrage
+    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
+  }
 });
 
 app.on('window-all-closed', () => {

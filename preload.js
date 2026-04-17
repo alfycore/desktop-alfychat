@@ -22,4 +22,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onWinState: (callback) => {
     ipcRenderer.on('win-state', (_event, state) => callback(state));
   },
+
+  // Auto-update (electron-updater)
+  onUpdateAvailable:  (cb) => ipcRenderer.on('update-available',  (_, info) => cb(info)),
+  onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),
+  onUpdateError:      (cb) => ipcRenderer.on('update-error',      (_, info) => cb(info)),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
 });
