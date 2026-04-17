@@ -1,6 +1,10 @@
 {
   "name": "alfychat-desktop",
   "version": "1.0.0-Beta",
+  "author": {
+    "name": "AlfyChat",
+    "email": "maintainer@alfychat.app"
+  },
   "description": "AlfyChat Desktop App",
   "main": "main.js",
   "scripts": {
