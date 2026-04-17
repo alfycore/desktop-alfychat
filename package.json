@@ -29,7 +29,14 @@
       "buildResources": "build-assets"
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "resources/icons/icon.ico"
     },
     "nsis": {
@@ -39,7 +46,15 @@
       "createStartMenuShortcut": true
     },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "icon": "resources/icons/icon.icns",
       "category": "public.app-category.social-networking",
       "hardenedRuntime": true,
@@ -48,12 +63,25 @@
       "entitlementsInherit": "build-assets/entitlements.mac.plist"
     },
     "linux": {
-      "target": ["deb", "AppImage"],
+      "target": [
+        "deb",
+        "AppImage"
+      ],
       "icon": "resources/icons/icon.png",
       "category": "Network"
     },
     "deb": {
-      "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1", "libsecret-1-0"]
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ]
     },
     "publish": {
       "provider": "github",
@@ -63,7 +91,7 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.1.0"
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "electron": "^33.0.0",
