@@ -35,6 +35,9 @@ jobs:
       do_release: ${{ steps.resolve.outputs.do_release }}
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Résoudre tag et version
         id: resolve
         run: |
