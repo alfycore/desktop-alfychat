@@ -233,7 +233,6 @@ jobs:
     name: GitHub Release
     needs: [prepare, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
-    if: needs.prepare.outputs.do_release == 'true'
 
     steps:
       - name: Télécharger tous les artifacts
@@ -241,8 +240,22 @@ jobs:
         with:
           path: artifacts
 
-      - name: Créer le tag si déclenché manuellement
-        if: github.event_name == 'workflow_dispatch'
+      - name: Déterminer si publication
+        id: should_publish
+        run: |
+          SHOULD=false
+          # publication si : push sur tag, ou exécution manuelle avec version, ou push sur main
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            SHOULD=true
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            SHOULD=true
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF#refs/heads/}" == "main" ]]; then
+            SHOULD=true
+          fi
+          echo "should_publish=${SHOULD}" >> "$GITHUB_OUTPUT"
+
+      - name: Créer le tag si besoin
+        if: steps.should_publish.outputs.should_publish == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -262,6 +275,7 @@ jobs:
             }
 
       - name: Créer la Release GitHub
+        if: steps.should_publish.outputs.should_publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
