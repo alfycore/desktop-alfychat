@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, session } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -65,6 +65,12 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
+
+  // Injecter le preload dans chaque <webview> attaché à cette fenêtre
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, _params) => {
+    webPreferences.preload = path.join(__dirname, 'resources', 'js', 'webview-preload.js');
+    webPreferences.contextIsolation = false;
+  });
 }
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
@@ -91,6 +97,33 @@ ipcMain.handle('show-notification', (_, { title, body }) => {
 // ── Cycle de vie de l'app ─────────────────────────────────────────────────────
 app.whenReady().then(() => {
   prefsPath = path.join(app.getPath('userData'), 'window-prefs.json');
+
+  // Configurer la session persist:alfychat pour les cookies et permissions
+  const alfychatSession = session.fromPartition('persist:alfychat');
+
+  alfychatSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const allowed = ['notifications', 'media', 'microphone', 'camera',
+                     'clipboard-read', 'clipboard-sanitized-write'];
+    callback(allowed.includes(permission));
+  });
+
+  // S'assurer que les cookies SameSite=None sont bien stockés dans le contexte webview
+  alfychatSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = Object.assign({}, details.responseHeaders);
+    const setCookie = headers['set-cookie'] || headers['Set-Cookie'];
+    if (setCookie) {
+      const key = headers['set-cookie'] ? 'set-cookie' : 'Set-Cookie';
+      headers[key] = setCookie.map(cookie => {
+        // Ajouter Secure si SameSite=None sans attribut Secure
+        if (/samesite=none/i.test(cookie) && !/;\s*secure/i.test(cookie)) {
+          return cookie + '; Secure';
+        }
+        return cookie;
+      });
+    }
+    callback({ responseHeaders: headers });
+  });
+
   createWindow();
 });
 

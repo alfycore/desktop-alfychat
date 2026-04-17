@@ -1,6 +1,6 @@
 {
   "name": "alfychat-desktop",
-  "version": "1.0.0-Beta",
+  "version": "1.0.1-Beta",
   "author": {
     "name": "AlfyChat",
     "email": "maintainer@alfychat.app"
@@ -54,7 +54,16 @@
     },
     "deb": {
       "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1", "libsecret-1-0"]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "alfycore",
+      "repo": "desktop-alfychat",
+      "releaseType": "release"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.0"
   },
   "devDependencies": {
     "electron": "^33.0.0",
