@@ -38,18 +38,31 @@ jobs:
       - name: Résoudre tag et version
         id: resolve
         run: |
-          if [[ "${{ github.event_name }}" == "push" ]]; then
+          # Utiliser la version définie dans package.json (le workflow desktop s'exécute dans le dossier desktop/)
+          if [ -f package.json ]; then
+            PKG_VERSION=$(node -e "console.log(require('./package.json').version)")
+          elif [ -f ../package.json ]; then
+            PKG_VERSION=$(node -e "console.log(require('../package.json').version)")
+          else
+            echo "Erreur: package.json introuvable"; exit 1
+          fi
+          echo "package.json version: $PKG_VERSION"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-            VERSION="${TAG#v}"
+            if [[ "$TAG" == "v${PKG_VERSION}" || "$TAG" == "${PKG_VERSION}" ]]; then
+              VERSION="${PKG_VERSION}"
+            else
+              echo "Note: tag ($TAG) ne correspond pas à package.json version (v${PKG_VERSION}) — j'utilise package.json version"
+              VERSION="${PKG_VERSION}"
+            fi
             DO_RELEASE="true"
           elif [[ -n "${{ github.event.inputs.version }}" ]]; then
             VERSION="${{ github.event.inputs.version }}"
             TAG="v${VERSION}"
             DO_RELEASE="true"
           else
-            # Exécution manuelle sans version → build uniquement, pas de release
             TAG="dev-build"
-            VERSION="0.0.0-dev"
+            VERSION="${PKG_VERSION}"
             DO_RELEASE="false"
           fi
           echo "tag=${TAG}"       >> "$GITHUB_OUTPUT"

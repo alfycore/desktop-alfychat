@@ -1,6 +1,6 @@
 {
   "name": "alfychat-desktop",
-  "version": "1.0.0",
+  "version": "1.0.0-Beta",
   "description": "AlfyChat Desktop App",
   "main": "main.js",
   "scripts": {
