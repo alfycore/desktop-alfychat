@@ -1,0 +1,8 @@
+/.tmp
+/bin
+/bun.lock
+/convert-icons.py
+/dist
+/neutralino.config.json
+/neutralinojs.log
+/node_modules

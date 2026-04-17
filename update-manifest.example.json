@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "notes": "Première version publique d'AlfyChat Desktop.",
+  "date": "2026-04-17",
+  "platforms": {
+    "win32": {
+      "url": "https://update.alfychat.com/desktop/alfychat-desktop-1.0.0-win.zip",
+      "size": 0
+    },
+    "linux": {
+      "url": "https://update.alfychat.com/desktop/alfychat-desktop-1.0.0-linux.zip",
+      "size": 0
+    },
+    "darwin": {
+      "url": "https://update.alfychat.com/desktop/alfychat-desktop-1.0.0-mac.zip",
+      "size": 0
+    }
+  }
+}

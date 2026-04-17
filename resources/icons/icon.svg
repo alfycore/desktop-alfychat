@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#g)"/>
+  <!-- Chat bubble -->
+  <path d="M64 88 C64 75 75 64 88 64 L168 64 C181 64 192 75 192 88 L192 148 C192 161 181 172 168 172 L120 172 L96 196 L96 172 L88 172 C75 172 64 161 64 148 Z"
+        fill="white" opacity="0.95"/>
+  <!-- Lightning bolt -->
+  <path d="M138 92 L116 132 L130 132 L118 164 L148 116 L134 116 Z"
+        fill="url(#g)"/>
+</svg>
