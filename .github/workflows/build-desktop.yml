@@ -5,8 +5,8 @@ name: Build & Release Desktop
 #   - bouton "Run workflow" dans l'onglet Actions (avec version facultative)
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
@@ -61,9 +61,6 @@ jobs:
     name: Windows (exe)
     needs: prepare
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +88,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-windows
-          path: desktop/dist/*.exe
+          path: dist/*.exe
           if-no-files-found: error
 
   # ── macOS (DMG x64 + arm64) ───────────────────────────────────────────────────
@@ -99,9 +96,6 @@ jobs:
     name: macOS (dmg)
     needs: prepare
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -137,7 +131,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-macos
-          path: desktop/dist/*.dmg
+          path: dist/*.dmg
           if-no-files-found: error
 
   # ── Linux (deb + AppImage) ────────────────────────────────────────────────────
@@ -145,9 +139,6 @@ jobs:
     name: Linux (deb + AppImage)
     needs: prepare
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -189,14 +180,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-linux-deb
-          path: desktop/dist/*.deb
+          path: dist/*.deb
           if-no-files-found: error
 
       - name: Upload artifact AppImage
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-linux-appimage
-          path: desktop/dist/*.AppImage
+          path: dist/*.AppImage
           if-no-files-found: error
 
   # ── GitHub Release ────────────────────────────────────────────────────────────
