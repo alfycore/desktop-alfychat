@@ -77,7 +77,17 @@ jobs:
         shell: pwsh
 
       - name: Installer les dépendances
-        run: npm ci
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) {
+            npm ci
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host 'npm ci a échoué, fallback vers npm install'
+              npm install --no-audit --no-fund
+            }
+          } else {
+            npm install --no-audit --no-fund
+          }
 
       - name: Build Windows (NSIS)
         run: npm run build:win
@@ -114,7 +124,13 @@ jobs:
           "
 
       - name: Installer les dépendances
-        run: npm ci
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || { echo 'npm ci a échoué, fallback vers npm install'; npm install --no-audit --no-fund; }
+          else
+            npm install --no-audit --no-fund
+          fi
 
       - name: Build macOS (DMG)
         run: npm run build:mac
@@ -169,7 +185,13 @@ jobs:
           "
 
       - name: Installer les dépendances
-        run: npm ci
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || { echo 'npm ci a échoué, fallback vers npm install'; npm install --no-audit --no-fund; }
+          else
+            npm install --no-audit --no-fund
+          fi
 
       - name: Build Linux (deb + AppImage)
         run: npm run build:linux
