@@ -72,7 +72,7 @@ window.electronAPI.onUpdateError(function (_info) {
 });
 
 // ── 6. Navigation guard ────────────────────────────────────────────────────────
-var ALLOWED_NAV = /^\/(login|register|forgot-password|reset-password|verify-email|channels|invite|app|subscription)(\/.*)?(\?.*)?$/;
+var ALLOWED_NAV = /^\/(login|register|forgot-password|reset-password|verify-email|channels)(\/.*)?(\..*)?$/;
 
 function guardNavByUrl(url) {
   try {
