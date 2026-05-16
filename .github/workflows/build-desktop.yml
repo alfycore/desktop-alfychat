@@ -1,13 +1,13 @@
 name: Build & Release Desktop
 
 # Déclenché par :
-#   - git push d'un tag v* (ex: git tag v1.2.0 && git push --tags)
+#   - git push sur la branche main
 #   - bouton "Run workflow" dans l'onglet Actions
 # La version est toujours lue depuis desktop/package.json
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - 'main'
   workflow_dispatch:
     inputs:
       prerelease:
