@@ -69,7 +69,7 @@ jobs:
           fi
 
       - name: Build Windows (NSIS)
-        run: npm run build:win
+        run: npm run build:win -- --publish never
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -111,7 +111,7 @@ jobs:
           fi
 
       - name: Build macOS (DMG)
-        run: npm run build:mac
+        run: npm run build:mac -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           # Pour signer avec un certificat Apple Developer, ajouter ces secrets :
@@ -173,7 +173,7 @@ jobs:
           fi
 
       - name: Build Linux (deb + AppImage)
-        run: npm run build:linux
+        run: npm run build:linux -- --publish never
 
       - name: Upload artifact deb
         uses: actions/upload-artifact@v4
