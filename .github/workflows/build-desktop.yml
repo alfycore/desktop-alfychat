@@ -2,17 +2,14 @@ name: Build & Release Desktop
 
 # Déclenché par :
 #   - git push d'un tag v* (ex: git tag v1.2.0 && git push --tags)
-#   - bouton "Run workflow" dans l'onglet Actions (avec version facultative)
+#   - bouton "Run workflow" dans l'onglet Actions
+# La version est toujours lue depuis desktop/package.json
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version du tag à créer (ex: 1.2.0) — laisse vide pour ne pas créer de release'
-        required: false
-        default: ''
       prerelease:
         description: 'Marquer comme pré-release ?'
         required: false
@@ -25,58 +22,32 @@ permissions:
   contents: write
 
 jobs:
-  # ── Calcul du tag/version ─────────────────────────────────────────────────────
+  # ── Lecture de la version depuis desktop/package.json ────────────────────────
   prepare:
     name: Préparer la version
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
-      do_release: ${{ steps.resolve.outputs.do_release }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Résoudre tag et version
+      - name: Lire la version depuis desktop/package.json
         id: resolve
         run: |
-          # Utiliser la version définie dans package.json (le workflow desktop s'exécute dans le dossier desktop/)
-          if [ -f package.json ]; then
-            PKG_VERSION=$(node -e "console.log(require('./package.json').version)")
-          elif [ -f ../package.json ]; then
-            PKG_VERSION=$(node -e "console.log(require('../package.json').version)")
-          else
-            echo "Erreur: package.json introuvable"; exit 1
-          fi
-          echo "package.json version: $PKG_VERSION"
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            if [[ "$TAG" == "v${PKG_VERSION}" || "$TAG" == "${PKG_VERSION}" ]]; then
-              VERSION="${PKG_VERSION}"
-            else
-              echo "Note: tag ($TAG) ne correspond pas à package.json version (v${PKG_VERSION}) — j'utilise package.json version"
-              VERSION="${PKG_VERSION}"
-            fi
-            DO_RELEASE="true"
-          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-            TAG="v${VERSION}"
-            DO_RELEASE="true"
-          else
-            TAG="dev-build"
-            VERSION="${PKG_VERSION}"
-            DO_RELEASE="false"
-          fi
-          echo "tag=${TAG}"       >> "$GITHUB_OUTPUT"
+          VERSION=$(node -e "console.log(require('./desktop/package.json').version)")
+          echo "Version lue : $VERSION"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "do_release=${DO_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}"   >> "$GITHUB_OUTPUT"
 
   # ── Windows (NSIS .exe) ───────────────────────────────────────────────────────
   build-windows:
     name: Windows (exe)
     needs: prepare
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -85,36 +56,25 @@ jobs:
         with:
           node-version: 20
 
-      - name: Mettre à jour la version dans package.json
-        run: |
-          $pkg = Get-Content package.json | ConvertFrom-Json
-          $pkg.version = "${{ needs.prepare.outputs.version }}"
-          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json
-        shell: pwsh
-
       - name: Installer les dépendances
-        shell: pwsh
+        shell: bash
         run: |
-          if (Test-Path package-lock.json) {
-            npm ci
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host 'npm ci a échoué, fallback vers npm install'
-              npm install --no-audit --no-fund
-            }
-          } else {
+          if [ -f package-lock.json ]; then
+            npm ci || { echo 'npm ci a échoué, fallback vers npm install'; npm install --no-audit --no-fund; }
+          else
             npm install --no-audit --no-fund
-          }
+          fi
 
       - name: Build Windows (NSIS)
         run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-windows
-          path: dist/*.exe
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/latest.yml
           if-no-files-found: error
 
   # ── macOS (DMG x64 + arm64) ───────────────────────────────────────────────────
@@ -122,6 +82,9 @@ jobs:
     name: macOS (dmg)
     needs: prepare
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -129,15 +92,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Mettre à jour la version dans package.json
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ needs.prepare.outputs.version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
 
       - name: Installer les dépendances
         shell: bash
@@ -151,7 +105,7 @@ jobs:
       - name: Build macOS (DMG)
         run: npm run build:mac
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
           # Pour signer avec un certificat Apple Developer, ajouter ces secrets :
           # CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
           # CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
@@ -163,7 +117,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-macos
-          path: dist/*.dmg
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/latest-mac.yml
           if-no-files-found: error
 
   # ── Linux (deb + AppImage) ────────────────────────────────────────────────────
@@ -171,6 +127,9 @@ jobs:
     name: Linux (deb + AppImage)
     needs: prepare
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -191,15 +150,6 @@ jobs:
             libsecret-1-dev \
             rpm
 
-      - name: Mettre à jour la version dans package.json
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ needs.prepare.outputs.version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
-
       - name: Installer les dépendances
         shell: bash
         run: |
@@ -211,21 +161,21 @@ jobs:
 
       - name: Build Linux (deb + AppImage)
         run: npm run build:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact deb
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-linux-deb
-          path: dist/*.deb
+          path: desktop/dist/*.deb
           if-no-files-found: error
 
       - name: Upload artifact AppImage
         uses: actions/upload-artifact@v4
         with:
           name: alfychat-linux-appimage
-          path: dist/*.AppImage
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/latest-linux.yml
           if-no-files-found: error
 
   # ── GitHub Release ────────────────────────────────────────────────────────────
@@ -233,6 +183,7 @@ jobs:
     name: GitHub Release
     needs: [prepare, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
+    if: always() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success' && needs.build-linux.result == 'success'
 
     steps:
       - name: Télécharger tous les artifacts
@@ -240,22 +191,8 @@ jobs:
         with:
           path: artifacts
 
-      - name: Déterminer si publication
-        id: should_publish
-        run: |
-          SHOULD=false
-          # publication si : push sur tag, ou exécution manuelle avec version, ou push sur main
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            SHOULD=true
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
-            SHOULD=true
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF#refs/heads/}" == "main" ]]; then
-            SHOULD=true
-          fi
-          echo "should_publish=${SHOULD}" >> "$GITHUB_OUTPUT"
-
-      - name: Créer le tag si besoin
-        if: steps.should_publish.outputs.should_publish == 'true'
+      - name: Créer le tag si déclenché manuellement
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/github-script@v7
         with:
           script: |
@@ -275,7 +212,6 @@ jobs:
             }
 
       - name: Créer la Release GitHub
-        if: steps.should_publish.outputs.should_publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
@@ -285,8 +221,11 @@ jobs:
           draft: false
           files: |
             artifacts/alfychat-windows/*.exe
+            artifacts/alfychat-windows/latest.yml
             artifacts/alfychat-macos/*.dmg
+            artifacts/alfychat-macos/latest-mac.yml
             artifacts/alfychat-linux-deb/*.deb
             artifacts/alfychat-linux-appimage/*.AppImage
+            artifacts/alfychat-linux-appimage/latest-linux.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
