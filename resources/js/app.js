@@ -1,166 +1,253 @@
 /**
- * AlfyChat Desktop — app.js (Electron renderer, script classique)
+ * AlfyChat Desktop — renderer du shell (script classique, pas de bundler).
+ *
+ * Rôle : afficher le splash, créer le <webview> qui embarque le frontend,
+ * surveiller le chargement et présenter les erreurs.
+ * La cible (localhost en dev, alfychat.app en prod) vient du main process.
+ *
+ * ⚠ Tout est enfermé dans une IIFE : en script classique, un `var` de premier
+ * niveau devient une propriété de `window`. Certains noms (`status`, `name`,
+ * `length`, `top`…) y sont déjà définis par le navigateur avec un type imposé —
+ * `window.status` coerce par exemple toute valeur en chaîne, ce qui casse
+ * silencieusement une référence DOM. L'IIFE supprime le problème à la racine.
  */
 
-// ── 1. Config (écrasée dès que getConfig() répond) ─────────────────────────────
-var FRONTEND_URL = 'https://alfychat.app';
-var APP_VERSION  = '1.0.0';
+(function () {
+  'use strict';
 
-// ── 2. DOM refs ────────────────────────────────────────────────────────────────
-var splash       = document.getElementById('splash');
-var progressBar  = document.getElementById('progress');
-var splashStatus = document.getElementById('splash-status');
-var webviewWrap  = document.getElementById('webview-container');
-var frame        = document.getElementById('app-frame');
-var errorScreen  = document.getElementById('error-screen');
-var errorDetail  = document.getElementById('error-detail');
-var updateBanner = document.getElementById('update-banner');
-var updateText   = document.getElementById('update-text');
-var btnInstall   = document.getElementById('btn-install-update');
-var btnDismiss   = document.getElementById('btn-dismiss-update');
+  // ── Config (remplie par getConfig) ──────────────────────────────────────────
+  var CFG = {
+    FRONTEND_URL: 'https://alfychat.app',
+    APP_VERSION: '0.0.0',
+    IS_DEV: false,
+    PARTITION: 'persist:alfychat',
+  };
 
-// ── 3. État maximize (titleBarOverlay natif — hook pour extension future) ───────
-window.electronAPI.onWinState(function (_state) {
-  // Barre de titre native Electron (titleBarOverlay) — rien à mettre à jour côté DOM.
-});
+  // ── Références DOM ──────────────────────────────────────────────────────────
+  var splash = document.getElementById('splash');
+  var track = document.getElementById('track');
+  var bar = document.getElementById('bar');
+  var statusEl = document.getElementById('status');
+  var view = document.getElementById('view');
+  var devBadge = document.getElementById('dev-badge');
 
-// ── 4. Helpers ─────────────────────────────────────────────────────────────────
-function setProgress(pct, status) {
-  progressBar.style.width = pct + '%';
-  if (status) splashStatus.textContent = status;
-}
+  var errorPane = document.getElementById('error');
+  var errorLead = document.getElementById('error-lead');
+  var errorHint = document.getElementById('error-hint');
+  var errorDetail = document.getElementById('error-detail');
+  var btnRetry = document.getElementById('btn-retry');
+  var btnOpenExternal = document.getElementById('btn-open-external');
 
-function showError(msg) {
-  errorDetail.textContent = msg;
-  errorScreen.classList.add('show');
-  splash.classList.add('fade-out');
-}
+  var updateBanner = document.getElementById('update');
+  var updateText = document.getElementById('update-text');
+  var btnInstall = document.getElementById('btn-install');
+  var btnDismiss = document.getElementById('btn-dismiss');
 
-function hideSplash() {
-  webviewWrap.classList.add('visible');
-  splash.classList.add('fade-out');
-}
+  var frame = null; // <webview>, créé une fois la config connue
+  var failTimer = null;
+  var slowTimer = null;
 
-window.retryLoad = function () {
-  errorScreen.classList.remove('show');
-  splash.classList.remove('fade-out');
-  splash.style.opacity = '1';
-  frame.setAttribute('src', 'about:blank');
-  setProgress(5, 'Nouvelle tentative…');
-  startBoot();
-};
-
-// ── 5. Auto-update (via electron-updater → IPC) ───────────────────────────────
-window.electronAPI.onUpdateAvailable(function (info) {
-  updateText.textContent = 'Mise à jour ' + info.version + ' disponible — Téléchargement…';
-  updateBanner.classList.add('show');
-  btnInstall.style.display = 'none';
-  btnDismiss.onclick = function () { updateBanner.classList.remove('show'); };
-});
-
-window.electronAPI.onUpdateDownloaded(function (info) {
-  updateText.textContent = 'Mise à jour ' + info.version + ' prête';
-  updateBanner.classList.add('show');
-  btnInstall.style.display = '';
-  btnInstall.textContent = 'Redémarrer et installer';
-  btnInstall.onclick = function () { window.electronAPI.installUpdate(); };
-  btnDismiss.onclick = function () { updateBanner.classList.remove('show'); };
-});
-
-window.electronAPI.onUpdateError(function (_info) {
-  // Ignorer silencieusement — l'app reste fonctionnelle
-});
-
-// ── 6. Navigation guard ────────────────────────────────────────────────────────
-var ALLOWED_NAV = /^\/(login|register|forgot-password|reset-password|verify-email|channels)(\/.*)?(\..*)?$/;
-
-function guardNavByUrl(url) {
-  try {
-    var parsed      = new URL(url);
-    var frontendHost = new URL(FRONTEND_URL).host;
-    // Liens externes → ouvrir dans le navigateur système
-    if (parsed.host !== frontendHost) {
-      window.electronAPI.openExternal(url);
-      return;
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  function setProgress(pct, label) {
+    if (pct == null) {
+      track.classList.add('pending');
+    } else {
+      track.classList.remove('pending');
+      bar.style.width = pct + '%';
     }
-    // Routes internes non autorisées → rediriger vers /channels
-    if (!ALLOWED_NAV.test(parsed.pathname)) {
-      frame.setAttribute('src', FRONTEND_URL + '/channels');
-    }
-  } catch (_) {}
-}
-
-// ── 7. Webview events ──────────────────────────────────────────────────────────
-var failTimer = null;
-
-frame.addEventListener('dom-ready', function () {
-  if (failTimer) { clearTimeout(failTimer); failTimer = null; }
-  if (!webviewWrap.classList.contains('visible')) {
-    setProgress(100, 'Prêt !');
-    setTimeout(hideSplash, 400);
+    if (label) statusEl.textContent = label;
   }
-});
 
-frame.addEventListener('will-navigate', function (e) {
-  guardNavByUrl(e.url);
-});
-
-frame.addEventListener('did-navigate-in-page', function (e) {
-  if (e.isMainFrame) guardNavByUrl(e.url);
-});
-
-frame.addEventListener('did-fail-load', function (e) {
-  // errorCode -3 = ERR_ABORTED (navigation interrompue normalement), ignorer
-  if (e.errorCode !== -3 && e.isMainFrame) {
-    showError(
-      'Erreur de chargement (' + e.errorCode + ') : ' + e.errorDescription + '\n' +
-      'URL : ' + e.validatedURL
-    );
+  function clearTimers() {
+    if (failTimer) { clearTimeout(failTimer); failTimer = null; }
+    if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; }
   }
-});
 
-// ── 8. Messages depuis le webview ──────────────────────────────────────────────
-// Le preload du webview (webview-preload.js) bridge window.postMessage → sendToHost.
-// On reçoit ici via l'événement 'ipc-message' du <webview>.
-frame.addEventListener('ipc-message', function (e) {
-  if (e.channel !== 'app-message') return;
-  try {
-    var msg = e.args && e.args[0];
-    if (!msg || !msg.type) return;
-    if (msg.type === 'NOTIFICATION') {
-      window.electronAPI.showNotification({
-        title: msg.title || 'AlfyChat',
-        body:  msg.body  || '',
-      });
-    } else if (msg.type === 'OPEN_EXTERNAL' && msg.url && /^https?:\/\//.test(msg.url)) {
-      window.electronAPI.openExternal(msg.url);
-    } else if (msg.type === 'MINIMIZE_TO_TRAY') {
-      window.electronAPI.minimize();
+  function showApp() {
+    view.classList.add('visible');
+    splash.classList.add('hidden');
+  }
+
+  function showError(detail) {
+    clearTimers();
+    errorLead.textContent = CFG.IS_DEV
+      ? 'Le serveur de développement (' + CFG.FRONTEND_URL + ') est injoignable.'
+      : 'AlfyChat n’a pas pu contacter ' + CFG.FRONTEND_URL + '.';
+    errorHint.classList.toggle('show', !!CFG.IS_DEV);
+    errorDetail.textContent = detail;
+    errorPane.classList.add('show');
+    splash.classList.add('hidden');
+  }
+
+  function hideError() {
+    errorPane.classList.remove('show');
+    splash.classList.remove('hidden');
+  }
+
+  // ── Garde de navigation ─────────────────────────────────────────────────────
+  // Les routes hors application sont ramenées sur /channels ; tout ce qui sort
+  // de l'hôte cible part dans le navigateur système.
+  var ALLOWED_NAV =
+    /^\/(login|register|forgot-password|reset-password|verify-email|channels|invite)(\/.*)?$/;
+
+  function guardNav(url) {
+    try {
+      var parsed = new URL(url);
+      var cible = new URL(CFG.FRONTEND_URL);
+      if (parsed.host !== cible.host) {
+        window.electronAPI.openExternal(url);
+        return;
+      }
+      if (!ALLOWED_NAV.test(parsed.pathname)) {
+        frame.setAttribute('src', CFG.FRONTEND_URL + '/channels');
+      }
+    } catch (_) {
+      /* URL non analysable : on laisse passer */
     }
-  } catch (_) {}
-});
+  }
 
-// ── 9. Boot ────────────────────────────────────────────────────────────────────
-function startBoot() {
-  setProgress(5, 'Initialisation…');
+  // ── Création du <webview> ───────────────────────────────────────────────────
+  // Créé en JS (et non dans le HTML) car l'attribut `partition` doit être posé
+  // avant l'attachement : il diffère entre dev et prod pour isoler les sessions.
+  function createFrame() {
+    frame = document.createElement('webview');
+    frame.setAttribute('id', 'app-frame');
+    frame.setAttribute('allowpopups', '');
+    frame.setAttribute('partition', CFG.PARTITION);
+    frame.setAttribute('webpreferences', 'contextIsolation=no');
 
-  failTimer = setTimeout(function () {
-    if (!webviewWrap.classList.contains('visible')) {
-      showError(
-        'Impossible de contacter le frontend (' + FRONTEND_URL + ').\n' +
-        'Assurez-vous que l\'application AlfyChat est accessible.'
-      );
+    frame.addEventListener('dom-ready', function () {
+      clearTimers();
+      if (!view.classList.contains('visible')) {
+        setProgress(100, 'Prêt');
+        setTimeout(showApp, 320);
+      }
+    });
+
+    frame.addEventListener('will-navigate', function (e) {
+      guardNav(e.url);
+    });
+
+    frame.addEventListener('did-navigate-in-page', function (e) {
+      if (e.isMainFrame) guardNav(e.url);
+    });
+
+    frame.addEventListener('did-fail-load', function (e) {
+      // -3 = ERR_ABORTED : navigation interrompue volontairement, sans intérêt.
+      if (e.errorCode === -3 || !e.isMainFrame) return;
+      showError('Code ' + e.errorCode + ' — ' + e.errorDescription + '\nURL : ' + e.validatedURL);
+    });
+
+    // Messages venus du frontend, relayés par webview-preload.js.
+    frame.addEventListener('ipc-message', function (e) {
+      if (e.channel !== 'app-message') return;
+      var msg = e.args && e.args[0];
+      if (!msg || !msg.type) return;
+
+      if (msg.type === 'NOTIFICATION') {
+        window.electronAPI.showNotification({
+          title: msg.title || 'AlfyChat',
+          body: msg.body || '',
+        });
+      } else if (msg.type === 'OPEN_EXTERNAL' && msg.url && /^https?:\/\//.test(msg.url)) {
+        window.electronAPI.openExternal(msg.url);
+      } else if (msg.type === 'MINIMIZE_TO_TRAY') {
+        window.electronAPI.minimize();
+      }
+    });
+
+    view.appendChild(frame);
+  }
+
+  // ── Démarrage ───────────────────────────────────────────────────────────────
+  function boot() {
+    clearTimers();
+    hideError();
+
+    var hote = CFG.FRONTEND_URL;
+    try {
+      hote = new URL(CFG.FRONTEND_URL).host;
+    } catch (_) {
+      /* URL invalide : on affiche la chaîne brute */
     }
-  }, 20000);
+    setProgress(15, 'Connexion à ' + hote + '…');
 
-  setProgress(60, 'Chargement de l\'interface…');
-  frame.setAttribute('src', FRONTEND_URL + '/channels');
-}
+    // En dev, Next compile la route à la première requête : l'attente est
+    // normale et peut être longue. Barre indéterminée, délai plus large.
+    var delai = CFG.IS_DEV ? 45000 : 20000;
 
-// ── 10. Init ───────────────────────────────────────────────────────────────────
-window.electronAPI.getConfig().then(function (cfg) {
-  FRONTEND_URL = (cfg.FRONTEND_URL || FRONTEND_URL).replace(/\/$/, '');
-  APP_VERSION  = cfg.APP_VERSION  || APP_VERSION;
-  startBoot();
-});
+    if (CFG.IS_DEV) {
+      slowTimer = setTimeout(function () {
+        if (!view.classList.contains('visible')) {
+          setProgress(null, 'Compilation du frontend…');
+        }
+      }, 2500);
+    }
 
+    failTimer = setTimeout(function () {
+      if (!view.classList.contains('visible')) {
+        showError('Aucune réponse après ' + Math.round(delai / 1000) + ' s.');
+      }
+    }, delai);
+
+    if (!frame) createFrame();
+    setProgress(60, 'Chargement de l’interface…');
+    frame.setAttribute('src', CFG.FRONTEND_URL + '/channels');
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  btnRetry.addEventListener('click', function () {
+    if (frame) frame.setAttribute('src', 'about:blank');
+    boot();
+  });
+
+  btnOpenExternal.addEventListener('click', function () {
+    window.electronAPI.openExternal(CFG.FRONTEND_URL + '/channels');
+  });
+
+  btnDismiss.addEventListener('click', function () {
+    updateBanner.classList.remove('show');
+  });
+
+  // ── Mises à jour ────────────────────────────────────────────────────────────
+  window.electronAPI.onUpdateAvailable(function (info) {
+    updateText.textContent = 'Mise à jour ' + info.version + ' — téléchargement en cours…';
+    btnInstall.style.display = 'none';
+    updateBanner.classList.add('show');
+  });
+
+  window.electronAPI.onUpdateDownloaded(function (info) {
+    updateText.textContent = 'Mise à jour ' + info.version + ' prête à être installée';
+    btnInstall.style.display = '';
+    btnInstall.onclick = function () {
+      window.electronAPI.installUpdate();
+    };
+    updateBanner.classList.add('show');
+  });
+
+  window.electronAPI.onUpdateError(function () {
+    /* silencieux : l'app reste utilisable */
+  });
+
+  window.electronAPI.onWinState(function () {
+    /* barre de titre native : rien à synchroniser côté DOM */
+  });
+
+  // ── Init ────────────────────────────────────────────────────────────────────
+  window.electronAPI
+    .getConfig()
+    .then(function (cfg) {
+      CFG.FRONTEND_URL = (cfg.FRONTEND_URL || CFG.FRONTEND_URL).replace(/\/+$/, '');
+      CFG.APP_VERSION = cfg.APP_VERSION || CFG.APP_VERSION;
+      CFG.IS_DEV = !!cfg.IS_DEV;
+      CFG.PARTITION = cfg.PARTITION || CFG.PARTITION;
+
+      devBadge.classList.toggle('show', CFG.IS_DEV);
+      document.title = CFG.IS_DEV ? 'AlfyChat — DEV' : 'AlfyChat';
+
+      boot();
+    })
+    .catch(function (err) {
+      showError('Configuration illisible : ' + (err && err.message ? err.message : String(err)));
+    });
+})();
