@@ -9,8 +9,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron .",
-    "dev:inspect": "electron . --inspect",
+    "dev": "electron . --devtools",
+    "dev:inspect": "electron . --devtools --inspect",
     "prod": "electron . --prod",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
@@ -24,7 +24,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "resources/**/*"
+      "resources/error.html",
+      "resources/icons/icon.png"
     ],
     "directories": {
       "output": "dist",
@@ -90,7 +91,8 @@
       "owner": "alfycore",
       "repo": "desktop-alfychat",
       "releaseType": "release"
-    }
+    },
+    "compression": "maximum"
   },
   "dependencies": {
     "electron-updater": "^6.8.3"

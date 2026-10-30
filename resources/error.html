@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlfyChat</title>
+  <style>
+    :root {
+      --bg: oklch(14.5% 0.006 293);
+      --surface: oklch(18% 0.007 293);
+      --surface-2: oklch(21.5% 0.009 293);
+      --surface-3: oklch(25% 0.011 293);
+      --accent: oklch(64% 0.24 293);
+      --text: oklch(96% 0.004 293);
+      --muted: oklch(66% 0.014 293);
+      --danger: oklch(63% 0.2 26);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+      font: 13px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+    body { display: flex; align-items: center; justify-content: center; padding: 32px; }
+    /* Même zone de déplacement que l'AppTitleBar du frontend. */
+    .drag { position: fixed; inset: 0 0 auto 0; height: 32px; -webkit-app-region: drag; }
+    .card { width: 100%; max-width: 440px; background: var(--surface); border-radius: 24px; padding: 32px;
+      display: flex; flex-direction: column; gap: 18px; }
+    h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+    p { color: var(--muted); margin-top: 4px; }
+    .hint { display: none; background: var(--surface-2); border-radius: 16px; padding: 14px; color: var(--text); font-size: 12px; }
+    .hint.show { display: block; }
+    code, pre { font-family: 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace; font-size: 11.5px; }
+    code { background: var(--bg); border-radius: 6px; padding: 2px 6px; }
+    pre { background: var(--bg); border-radius: 16px; padding: 14px; color: var(--muted); line-height: 1.65;
+      white-space: pre-wrap; word-break: break-word; }
+    .actions { display: flex; gap: 8px; }
+    button { flex: 1; font: inherit; font-weight: 500; padding: 10px 16px; border: 0; border-radius: 10px;
+      cursor: pointer; color: var(--muted); background: transparent; transition: background 160ms, transform 120ms; }
+    button:hover { background: var(--surface-3); color: var(--text); }
+    button:active { transform: scale(0.97); }
+    button.primary { background: var(--accent); color: oklch(99.5% 0 0); }
+    button.primary:hover { background: var(--accent); filter: brightness(1.1); }
+  </style>
+</head>
+<body>
+  <div class="drag"></div>
+  <main class="card">
+    <div>
+      <h1>Impossible de démarrer</h1>
+      <p id="lead"></p>
+    </div>
+    <div class="hint" id="hint">
+      Le serveur de développement ne répond pas. Lancez-le puis réessayez :<br />
+      <code>cd Frontend-AlfyChat &amp;&amp; bun dev</code>
+    </div>
+    <pre id="detail"></pre>
+    <div class="actions">
+      <button class="primary" id="retry">Réessayer</button>
+      <button id="browser">Ouvrir dans le navigateur</button>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var url = q.get('url') || '';
+      var dev = q.get('dev') === '1';
+      document.getElementById('lead').textContent = dev
+        ? 'Le serveur de développement (' + url + ') est injoignable.'
+        : 'AlfyChat n’a pas pu contacter ' + url + '.';
+      document.getElementById('hint').classList.toggle('show', dev);
+      document.getElementById('detail').textContent = q.get('detail') || '';
+      document.getElementById('retry').onclick = function () { window.electronAPI.retry(); };
+      document.getElementById('browser').onclick = function () { window.electronAPI.openExternal(url + '/channels'); };
+    })();
+  </script>
+</body>
+</html>
