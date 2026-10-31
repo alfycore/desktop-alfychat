@@ -15,6 +15,15 @@
       --muted: oklch(66% 0.014 293);
       --danger: oklch(63% 0.2 26);
     }
+    /* Thème clair de l'application (transmis par le processus principal). */
+    :root.light {
+      --bg: oklch(94.8% 0.0075 282);
+      --surface: oklch(99.5% 0.0034 282);
+      --surface-2: oklch(96.8% 0.0064 282);
+      --surface-3: oklch(93.4% 0.0075 282);
+      --text: oklch(20.5% 0.0083 282);
+      --muted: oklch(49% 0.0105 282);
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
       font: 13px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
@@ -62,13 +71,20 @@
       var q = new URLSearchParams(location.search);
       var url = q.get('url') || '';
       var dev = q.get('dev') === '1';
+      var api = window.electronAPI;
+      // Même fond que le thème de l'app : le bandeau natif est déjà à cette couleur.
+      var bg = q.get('bg') || '';
+      if (q.get('light') === '1') document.documentElement.classList.add('light');
+      if (/^#[0-9a-f]{6}$/i.test(bg)) document.documentElement.style.setProperty('--bg', bg);
       document.getElementById('lead').textContent = dev
         ? 'Le serveur de développement (' + url + ') est injoignable.'
         : 'AlfyChat n’a pas pu contacter ' + url + '.';
       document.getElementById('hint').classList.toggle('show', dev);
       document.getElementById('detail').textContent = q.get('detail') || '';
-      document.getElementById('retry').onclick = function () { window.electronAPI.retry(); };
-      document.getElementById('browser').onclick = function () { window.electronAPI.openExternal(url + '/channels'); };
+      document.getElementById('retry').onclick = function () { if (api) api.retry(); };
+      document.getElementById('browser').onclick = function () { if (api) api.openExternal(url + '/channels'); };
+      // Hors ligne au lancement : on recharge seul dès le retour du réseau.
+      window.addEventListener('online', function () { if (api) api.retry(); });
     })();
   </script>
 </body>

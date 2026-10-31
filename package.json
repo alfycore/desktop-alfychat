@@ -63,7 +63,11 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build-assets/entitlements.mac.plist",
-      "entitlementsInherit": "build-assets/entitlements.mac.plist"
+      "entitlementsInherit": "build-assets/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "AlfyChat utilise le micro pour les appels et les salons vocaux.",
+        "NSCameraUsageDescription": "AlfyChat utilise la caméra pour les appels vidéo."
+      }
     },
     "linux": {
       "target": [

@@ -1,8 +1,8 @@
 name: Build & Release Desktop
 
 # Déclenché par :
-#   - git push sur la branche main
-#   - bouton "Run workflow" dans l'onglet Actions
+#   - git push sur la branche main (seulement si la version n'est pas déjà publiée)
+#   - bouton "Run workflow" dans l'onglet Actions (toujours)
 # La version est toujours lue depuis package.json
 on:
   push:
@@ -28,21 +28,33 @@ jobs:
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
+      skip: ${{ steps.resolve.outputs.skip }}
 
     steps:
       - uses: actions/checkout@v4
       - name: Lire la version depuis package.json
         id: resolve
         run: |
-          VERSION=$(node -e "console.log(require('./package.json').version)")
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
           echo "Version lue : $VERSION"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION}"   >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}"         >> "$GITHUB_OUTPUT"
+          # Sur un push, une version déjà publiée n'est pas reconstruite : les
+          # clients installés ne verraient rien (même numéro) et les binaires de
+          # la release changeraient sous le même nom.
+          if [ "${{ github.event_name }}" = "push" ] && git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null; then
+            echo "::notice::${TAG} est déjà publiée : build ignoré. Augmenter la version dans package.json pour publier."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ── Windows (NSIS .exe) ───────────────────────────────────────────────────────
   build-windows:
     name: Windows (exe)
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: windows-latest
 
     steps:
@@ -50,23 +62,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Mettre à jour la version dans package.json
-        shell: pwsh
-        run: |
-          $pkg = Get-Content package.json | ConvertFrom-Json
-          $pkg.version = "${{ needs.prepare.outputs.version }}"
-          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json
+          node-version: 22
+          cache: npm
 
       - name: Installer les dépendances
-        shell: bash
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci || { echo 'npm ci a échoué, fallback vers npm install'; npm install --no-audit --no-fund; }
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm ci --no-audit --no-fund
 
       - name: Build Windows (NSIS)
         run: npm run build:win -- --publish never
@@ -84,6 +84,7 @@ jobs:
   build-macos:
     name: macOS (dmg)
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: macos-latest
 
     steps:
@@ -91,24 +92,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Mettre à jour la version dans package.json
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ needs.prepare.outputs.version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
+          node-version: 22
+          cache: npm
 
       - name: Installer les dépendances
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci || { echo 'npm ci a échoué, fallback vers npm install'; npm install --no-audit --no-fund; }
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm ci --no-audit --no-fund
 
       - name: Build macOS (DMG)
         run: npm run build:mac -- --publish never
@@ -131,9 +119,12 @@ jobs:
           if-no-files-found: error
 
   # ── Linux (deb + AppImage) ────────────────────────────────────────────────────
+  # electron-builder télécharge lui-même ses outils (fpm, appimagetool) : aucun
+  # paquet système n'est nécessaire pour construire.
   build-linux:
     name: Linux (deb + AppImage)
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -141,36 +132,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Installer les dépendances système
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libnotify-dev \
-            libnss3 \
-            libxss1 \
-            libxtst-dev \
-            libsecret-1-dev \
-            rpm
-
-      - name: Mettre à jour la version dans package.json
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ needs.prepare.outputs.version }}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
+          node-version: 22
+          cache: npm
 
       - name: Installer les dépendances
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci || { echo 'npm ci a échoué, fallback vers npm install'; npm install --no-audit --no-fund; }
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm ci --no-audit --no-fund
 
       - name: Build Linux (deb + AppImage)
         run: npm run build:linux -- --publish never
